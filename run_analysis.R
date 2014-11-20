@@ -1,3 +1,4 @@
+library(dplyr)
 library(plyr)
 library(stringr)
   
@@ -10,11 +11,11 @@ DataSetPath <- function(data.set) {
   paste(data.path, data.set, sep="/")
 }
 
-ActivityFile <- function(data.set) {
+activityFile <- function(data.set) {
   paste0(DataSetPath(data.set), "/y_", data.set, ".txt")
 }
 
-SubjectFile <- function(data.set) {
+subjectFile <- function(data.set) {
   paste0(DataSetPath(data.set), "/subject_", data.set, ".txt")
 }
 
@@ -41,7 +42,7 @@ LoadRawNames <- function() {
 ReLabelNames <- function(names) {
   Normalise <- function(x) {
     elements <- str_split(x, "-")[[1]]
-    measurement <- substring(elements[1], 2)
+    measurement <- paste0(tolower(substring(elements[1], 2, 2)), substring(elements[1], 3))
     dimention <- if (length(elements) > 2) {
       gsub(",", "", elements[3])
     } else {
@@ -62,19 +63,19 @@ ReLabelActivities <- function(activities) {
   Normalise <- function(x) {
     paste0(substring(x, 1, 1),  gsub("_+", " ", tolower(substring(x, 2))))
   }
-  activities$Activity <- sapply(activities$Activity, Normalise)
+  activities$activity <- sapply(activities$activity, Normalise)
   activities
 }
 
 LoadRawActivtyNames <- function() {
-  read.table(activity.name.file, col.names=c("id", "Activity"))
+  read.table(activity.name.file, col.names=c("id", "activity"))
 }
 
 LoadActivities <- function(data.set) {
   activity.names <- ReLabelActivities(LoadRawActivtyNames())
-  raw.activities <- read.table(ActivityFile(data.set), col.names="id")
+  raw.activities <- read.table(activityFile(data.set), col.names="id")
   activities <- join(raw.activities, activity.names, by="id")
-  activities[, "Activity", drop=FALSE]
+  activities[, "activity", drop=FALSE]
 }
 
 LoadMeasurements <- function(data.set) {
@@ -83,7 +84,7 @@ LoadMeasurements <- function(data.set) {
 }
 
 LoadSubjects <- function(data.set) {
-  subjects <- read.table(SubjectFile(data.set), col.names=c("Subject"))
+  subjects <- read.table(subjectFile(data.set), col.names=c("subject"))
 }
 
 LoadDataSet <- function(data.set) {
@@ -93,7 +94,7 @@ LoadDataSet <- function(data.set) {
   cbind(measurements, activities, subjects)
 }
   
-GetMeasurements <- function() {
+LoadData <- function() {
   DownloadData(TRUE)
   UnzipData()
   rbind(LoadDataSet("test"), LoadDataSet("train"))
@@ -103,11 +104,19 @@ IsMeanOrStdColumn <- function(name) {
   grepl("(Mean|Std)$", name) 
 }
 
-GetKeyNames <- function(all.names) {
-  all.names[IsMeanOrStdColumn(all.names) | all.names == "Activity" | all.names == "Subject"]
+KeyNames <- function(all.names) {
+  all.names[IsMeanOrStdColumn(all.names) | all.names == "activity" | all.names == "subject"]
 }
 
-GetKeyMeasurements <- function(all.measurements) {
-  all.measurements[,GetKeyNames(names(all.measurements))]
+KeyMeasurements <- function(all.measurements) {
+  all.measurements[, KeyNames(names(all.measurements))]
 }
 
+FindMeans <- function(measurements) {
+  melted <- melt(measurements, id=c("activity", "subject"))
+  grouped <- group_by(melted, activity, subject, variable)
+  summarise(grouped, mean=mean(value))
+}
+
+means <- FindMeans(KeyMeasurements(LoadData()))
+write.table(means, "uci_har_means_long.txt",  row.name=FALSE)
