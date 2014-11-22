@@ -1,17 +1,14 @@
-# This code will download UCI HAR data, normalise it, extract and calculate
-# the desired means, then export the resulting data.
-#
-# The output data format is 'tall' - it is in the format provided by `melt`,
-# where the interesting variables are output in the column 'variable', with 
-# the mean values in 'mean'.
-#
-# This has not been optimised - all data is loaded from the original data, 
-# then it is filtered and the new data calculated. This is to improve readability
-# at the cost of performance.
-#
+# This code will download UCI HAR data, normalise it, extract and calculate the
+# desired means, then export the resulting data.
+# 
+# The output data format is 'tall' - it is in the format provided by `melt`, 
+# where the interesting variables are output in the column 'variable', with the
+# mean values in 'mean'.
+# 
 # When run, `dplyr` will produce masking warnings that can be ignored.
-#
-# It is broken into three sections: loading, calculating means and running.
+# 
+# It is broken into four sections: constants, loading data, calculating means
+# and running.
 
 library(plyr); library(dplyr) # this ordering is required to prevent incorrect masking
 library(reshape2)
@@ -66,28 +63,34 @@ LoadRawNames <- function() {
 }
 
 ReLabelNames <- function(names) {
-  # Column names are split into measurement (eg BodyAcc), dimention (eg X) and
-  # calculation (eg mean), extra characters removed, reordered and rendered in
-  # camelCase. Further normalisation is done using `make.names` - this forces 
-  # uniqueness and removes illegal characters from names not treated in the first
-  # round. We are not yet interested in the names/measuments that are modified
-  # so they are left as is.
+  # Column names are split into measurement (eg fBodyAcc), direction (eg X) and 
+  # calculation (eg mean), extra characters removed,rendered in camelCase,
+  # reordered and joined underscores. Further normalisation is done using
+  # `make.names` - this forces uniqueness and removes illegal characters from
+  # names not treated in the first round. We will split these names after we have
+  # melted the table and set all the measurements as variables.
   
   Normalise <- function(x) {
     elements <- str_split(x, "-")[[1]]
-    measurement <- sub("^t", "time", sub("^f", "frequency", elements[1]))
-    dimention <- if (length(elements) > 2) {
-      gsub(",", "", elements[3])
+    domain <- if (grepl("^f", elements[1])) {
+      "frequency"
+    } else if (grepl("^f", elements[1])) {
+      "time"
+    } else {
+      ""
+    }
+    measurement <- sub("^[ft]", "", elements[1])
+    direction <- if (length(elements) > 2) {
+      gsub("X,Y,Z", "XYZ", elements[3])
     } else {
       ""
     }
     calculation <- if (length(elements) > 1) {
-      calc <- gsub("[\\(\\)]", "", elements[2])
-      paste0(toupper(substring(calc, 1, 1)), tolower(substring(calc, 2)))
+      tolower(gsub("[\\(\\)]", "", elements[2]))
     } else {
       ""
     }
-    paste0(measurement, dimention, calculation)
+    paste(calculation, direction, domain, measurement, sep="_")
   }
   make.names(sapply(names, Normalise, USE.NAMES=FALSE), unique=TRUE)
 }
@@ -96,7 +99,7 @@ ReLabelActivities <- function(activities) {
   # Activity names are split to include white space and are put in sentence case
   
   Normalise <- function(x) {
-    paste0(substring(x, 1, 1),  gsub("_+", " ", tolower(substring(x, 2))))
+    gsub("_+", " ", tolower(x))
   }
   activities$activity <- sapply(activities$activity, Normalise)
   activities
@@ -113,10 +116,15 @@ LoadActivitiesAsLabels <- function(data.set) {
   activities[, "activity", drop=FALSE]
 }
 
-LoadMeasurementsWithColumnNames <- function(data.set) {
+IsMeanOrStd <- function(name) {
+  grepl("^(mean|std)_", name) 
+}
+
+LoadMeanAndStdMeasurements <- function(data.set) {
   names <- ReLabelNames(LoadRawNames())
   classes <- sapply(read.table(MeasurementsFile(data.set), nrows=5), class)
-  read.table(MeasurementsFile(data.set), col.names=names, colClasses = classes)
+  all.measurements <- read.table(MeasurementsFile(data.set), col.names=names, colClasses=classes)
+  all.measurements[, IsMeanOrStd(names)]
 }
 
 LoadSubjects <- function(data.set) {
@@ -126,7 +134,7 @@ LoadSubjects <- function(data.set) {
 LoadDataSet <- function(data.set) {
   # Loads an individual named data set (eg test or train).
   
-  measurements <- LoadMeasurementsWithColumnNames(data.set)
+  measurements <- LoadMeanAndStdMeasurements(data.set)
   activities <- LoadActivitiesAsLabels(data.set)
   subjects <- LoadSubjects(data.set)
   cbind(measurements, activities, subjects)
@@ -135,7 +143,7 @@ LoadDataSet <- function(data.set) {
 LoadData <- function() {
   # Load the test and training data from UCI HAR. Only download the data if it
   # has not been downloaded. The current working directory is used to store 
-  # the raw files.
+  # the raw files. Only the 'mean' and 'standard deviation' columns are loaded
 
   DownloadData(TRUE)
   UnzipData()
@@ -144,32 +152,27 @@ LoadData <- function() {
 
 
 ###############################################################################
-# Functions to extract and transform the subset of data we are interested in. 
+# Functions to extract and transform the data we are interested in. 
 ###############################################################################
 
-IsMeanOrStdColumn <- function(name) {
-  grepl("(Mean|Std)$", name) 
-}
-
-KeyNames <- function(all.names) {
-  all.names[IsMeanOrStdColumn(all.names) | all.names == "activity" | all.names == "subject"]
-}
-
-KeyMeasurements <- function(all.measurements) {
-  # Return a table with the subset of measurements/columns in which we are interested,
-  # as defined by `KeyNames`. The two identifying columns, 'activity' and 'subject' are
-  # included in this.
-  
-  all.measurements[, KeyNames(names(all.measurements))]
+SplitJoinedVariableName <- function(original) {
+  new.columns <- data.frame(do.call(rbind, str_split(original$joinedVariableName, "_")))
+  names(new.columns) <- c("calculation", "direction", "domain", "measurement")
+  cbind(original, new.columns)
 }
 
 FindMeans <- function(measurements) {
   # Find the mean of each measurement, grouped by 'activity' and 'subject'. This
   # returnes a melted table, where the measurements are per-row, not per-column.
+  # The input should be non-tidy measurements in columns. After melting, the
+  # measuments will be broken down into their constituent factors. The order of
+  # these operations is not important as the group-by is effectively the same.
   
-  melted <- melt(measurements, id=c("activity", "subject"))
-  grouped <- group_by(melted, activity, subject, variable)
-  summarise(grouped, mean=mean(value))
+  melt(measurements, id=c("activity", "subject"), variable.name="joinedVariableName") %>%
+    group_by(activity, subject, joinedVariableName) %>%
+    summarise(mean=mean(value)) %>%
+    SplitJoinedVariableName() %>%
+    select(activity, subject, measurement, direction, domain, calculation, mean)
 }
 
 
@@ -180,5 +183,5 @@ FindMeans <- function(measurements) {
 # with the resulting table output as-is.
 ###############################################################################
 
-means <- FindMeans(KeyMeasurements(LoadData()))
+means <- FindMeans(LoadData())
 write.table(means, output.file, row.name=FALSE)
