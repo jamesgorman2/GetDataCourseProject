@@ -27,6 +27,7 @@ zip.file <- "UCI_HAR.zip"
 data.path <- "UCI HAR Dataset"
 activity.name.file <- paste0(data.path, "/activity_labels.txt")
 measurement.name.file <- paste0(data.path, "/features.txt")
+output.file <- "uci_har_means_long.txt"
 
 DataSetPath <- function(data.set) {
   paste(data.path, data.set, sep="/")
@@ -74,7 +75,7 @@ ReLabelNames <- function(names) {
   
   Normalise <- function(x) {
     elements <- str_split(x, "-")[[1]]
-    measurement <- paste0(tolower(substring(elements[1], 2, 2)), substring(elements[1], 3))
+    measurement <- sub("^t", "time", sub("^f", "frequency", elements[1]))
     dimention <- if (length(elements) > 2) {
       gsub(",", "", elements[3])
     } else {
@@ -180,4 +181,4 @@ FindMeans <- function(measurements) {
 ###############################################################################
 
 means <- FindMeans(KeyMeasurements(LoadData()))
-write.table(means, "uci_har_means_long.txt", row.name=FALSE)
+write.table(means, output.file, row.name=FALSE)

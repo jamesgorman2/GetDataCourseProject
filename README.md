@@ -1,7 +1,7 @@
 # Getting and Cleaning Data Course Project
 
 This is the code submition for the [Getting and Cleaning Data Course Project](https://class.coursera.org/getdata-009/human_grading/view/courses/972587/assessments/3).
-It takes data from [Human Activity Recognition Using Smartphones Data Set](http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones)
+It takes data from the [Human Activity Recognition Using Smartphones Data Set](http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones)
 (HAR) and calculates the mean of a subset of measurements.
 
 ## Files
