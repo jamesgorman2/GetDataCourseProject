@@ -81,12 +81,12 @@ ReLabelNames <- function(names) {
     }
     measurement <- sub("^[ft]", "", elements[1])
     direction <- if (length(elements) > 2) {
-      gsub("X,Y,Z", "XYZ", elements[3])
+      elements[3]
     } else {
       ""
     }
     calculation <- if (length(elements) > 1) {
-      tolower(gsub("[\\(\\)]", "", elements[2]))
+      gsub("[\\(\\)]", "", elements[2])
     } else {
       ""
     }

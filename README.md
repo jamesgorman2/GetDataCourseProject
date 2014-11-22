@@ -28,5 +28,3 @@ $ r
 This will download the original data, perform the calculations and output the data to `uci_har_means_long.txt`.
 The data is only downloaded if it is not present. `dyplyr` will produce masking warnings that can be
 ignored. All operations happen in the current working directory.
-
-The code is currently unoptimised for readability.
